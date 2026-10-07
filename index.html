@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard IoT Profesional</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0f1117',
+                        cardBg: '#181b23',
+                        borderBg: '#262a36',
+                        accentBlue: '#3b82f6',
+                        accentOrange: '#f97316',
+                        accentGreen: '#10b981',
+                        accentPurple: '#8b5cf6',
+                        accentYellow: '#eab308'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PocketBase SDK -->
+    <script src="https://unpkg.com/pocketbase/dist/pocketbase.umd.js"></script>
+    <link rel="stylesheet" href="styles.css">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f1117;
+            color: #f3f4f6;
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f1117;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #262a36;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151;
+        }
+        /* Progress Circle animation */
+        .circle-chart-circle {
+            transition: stroke-dashoffset 0.5s ease-in-out;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+        /* Mejora inputs fecha/hora: icono calendario + color scheme */
+        input[type="datetime-local"] {
+            color-scheme: dark;
+        }
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            opacity: 0.7;
+        }
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+        }
+        /* ===== Responsive: tablets y celulares ===== */
+        #sidebar { transition: transform .25s ease; }
+        @media (max-width: 767px) {
+            #sidebar {
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                z-index: 40;
+                width: 17rem;
+                max-width: 85vw;
+                transform: translateX(-105%);
+                box-shadow: 0 0 40px rgba(0,0,0,.5);
+            }
+            #sidebar.open { transform: translateX(0); }
+            #sidebar-overlay.show { display: block; }
+            canvas { max-width: 100%; }
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-sm">
+
+    <!-- Navbar / Header -->
+    <header class="bg-cardBg border-b border-borderBg px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-3 z-30 shrink-0">
+        <div class="flex items-center space-x-3">
+            <button onclick="toggleSidebar()" class="md:hidden p-2 bg-darkBg hover:bg-borderBg border border-borderBg rounded-lg text-gray-300" title="Menú equipos">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="p-2 bg-blue-600/20 text-blue-500 rounded-lg">
+                <i class="fa-solid fa-microchip text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg text-white tracking-wide">DASHBOARD <span class="text-blue-500 text-xs font-normal border border-blue-500/30 px-1.5 py-0.5 rounded ml-1">IoT</span></h1>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="flex bg-darkBg p-1 rounded-xl border border-borderBg order-3 md:order-none w-full md:w-auto justify-center">
+            <button id="tab-realtime-btn" onclick="switchTab('realtime')" class="flex-1 md:flex-none px-3 md:px-5 py-1.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 bg-blue-600 text-white shadow-md">
+                <i class="fa-solid fa-bolt text-xs"></i>
+                <span>REALTIME</span>
+            </button>
+            <button id="tab-history-btn" onclick="switchTab('history')" class="flex-1 md:flex-none px-3 md:px-5 py-1.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 text-gray-400 hover:text-white">
+                <i class="fa-solid fa-clock-rotate-left text-xs"></i>
+                <span>HISTÓRICO</span>
+            </button>
+        </div>
+
+        <!-- System Controls & Status -->
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-2 bg-darkBg border border-borderBg px-3 py-1.5 rounded-lg">
+                <span class="relative flex h-2.5 w-2.5">
+                    <span id="pb-status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span id="pb-status-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span id="pb-status-text" class="text-xs text-gray-300 font-medium">Online</span>
+            </div>
+            <button onclick="toggleMockEngine()" id="mock-toggle-btn" title="Pausar/Reanudar" class="p-2 bg-cardBg hover:bg-borderBg border border-borderBg rounded-lg text-gray-300">
+                <i class="fa-solid fa-pause"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="flex flex-1 overflow-hidden flex-col md:flex-row relative">
+        <div id="sidebar-overlay" onclick="toggleSidebar(false)" class="hidden fixed inset-0 bg-black/60 z-30 md:hidden"></div>
+        <!-- Flecha lateral para ocultar/mostrar barra lateral -->
+        <button id="sidebar-arrow" onclick="toggleSidebarDesktop()" title="Ocultar/Mostrar barra lateral" class="hidden md:flex absolute top-1/2 -translate-y-1/2 left-0 md:left-64 z-20 items-center justify-center w-5 h-10 bg-cardBg border border-borderBg border-l-0 rounded-r-lg text-gray-400 hover:text-white hover:bg-borderBg transition">
+            <i id="sidebar-arrow-icon" class="fa-solid fa-chevron-left text-[10px]"></i>
+        </button>
+        <!-- Sidebar - Device Selector (8 pestañas: General + 7 equipos) -->
+        <aside id="sidebar" class="w-full md:w-64 bg-cardBg border-b md:border-b-0 md:border-r border-borderBg flex flex-col shrink-0">
+            <div class="p-4 border-b border-borderBg flex justify-between items-center">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Equipos Registrados</span>
+                <span id="device-count" class="bg-darkBg text-blue-400 text-xs px-2 py-0.5 rounded-full border border-borderBg">8</span>
+            </div>
+
+            <div class="p-2 overflow-y-auto flex-1 space-y-1 max-h-[38vh] md:max-h-none" id="device-list">
+                <!-- Dispositivos inyectados por JS (General + 7 equipos) -->
+            </div>
+
+            <!-- Quick Status Footer -->
+            <div class="p-4 border-t border-borderBg bg-darkBg/50 text-xs text-gray-400">
+                <div class="flex justify-between mb-1">
+                    <span>Frecuencia Muestreo:</span>
+                    <span class="text-white font-medium">5.0s</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Tasa de Error:</span>
+                    <span class="text-emerald-400 font-medium">0.00%</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto p-4 md:p-6 bg-darkBg min-w-0 w-full">
+
+            <!-- GENERAL VIEW: mini resumen última actualización de cada equipo -->
+            <div id="view-general" class="space-y-6 hidden">
+                <div class="flex flex-col md:flex-row gap-4 md:justify-between md:items-center bg-cardBg border border-borderBg p-4 rounded-2xl">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center text-blue-400 text-xl">
+                            <i class="fa-solid fa-layer-group"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <h2 class="text-xl font-bold text-white">Resumen general</h2>
+                                <span id="general-online-badge" class="px-2 py-0.5 text-xs rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">EN LÍNEA</span>
+                            </div>
+                            <p id="general-last-update" class="text-xs text-gray-400">Última actualización: --:--:--</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs text-gray-400 block">Equipos supervisados</span>
+                        <span id="general-count" class="text-lg font-semibold text-white">7 / 7 activos</span>
+                    </div>
+                </div>
+
+                <!-- Grid estilo imagen: anillos circulares por equipo -->
+                <div class="bg-cardBg border border-borderBg p-5 rounded-2xl">
+                    <div class="flex flex-col md:flex-row gap-3 md:justify-between md:items-center mb-4">
+                        <div>
+                            <h3 class="text-base font-semibold text-white">Sensores y detalle por equipo</h3>
+                            <p class="text-xs text-gray-400">Último valor reportado por cada sensor · actualización cada 5.0 s</p>
+                        </div>
+                    </div>
+                    <div id="general-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+                        <!-- Mini tarjetas inyectadas por JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- REALTIME TAB CONTENT -->
+            <div id="view-realtime" class="space-y-6">
+                <!-- Device Header Info -->
+                <div class="flex flex-col md:flex-row gap-4 md:justify-between md:items-center bg-cardBg border border-borderBg p-4 rounded-2xl">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center text-blue-400 text-xl">
+                            <i id="current-device-icon" class="fa-solid fa-server"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <h2 id="current-device-name" class="text-xl font-bold text-white">Cargando...</h2>
+                                <span id="current-device-badge" class="px-2 py-0.5 text-xs rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">ONLINE</span>
+                            </div>
+                            <p id="current-device-id" class="text-xs text-gray-400">ID: --</p>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between md:justify-end gap-6 text-right w-full md:w-auto">
+                        <div>
+                            <span class="text-xs text-gray-400 block">Puntos Graficados</span>
+                            <span id="point-count" class="text-lg font-semibold text-white">0 / 30</span>
+                        </div>
+                        <div>
+                            <span class="text-xs text-gray-400 block">Última Transmisión</span>
+                            <span id="last-update" class="text-lg font-semibold text-blue-400">--:--:--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cards Grid - 4 Indicators -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="cards-container">
+                    <!-- Sensor Cards injected here dynamically -->
+                </div>
+
+                <!-- Realtime Dynamic Chart -->
+                <div class="bg-cardBg border border-borderBg p-5 rounded-2xl">
+                    <div class="flex flex-col md:flex-row gap-3 md:justify-between md:items-center mb-4">
+                        <div>
+                            <h3 class="text-base font-semibold text-white">Monitoreo dinámico multi-variable</h3>
+                            <p class="text-xs text-gray-400">En vivo · actualización cada 5.0 s · últimas 30 lecturas</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-gray-400">Tópico Activo:</span>
+                            <select id="chart-variable-select" onchange="changeChartVariable(this.value)" class="bg-darkBg border border-borderBg text-xs text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500">
+                                <option value="temperatura">Temperatura (°C)</option>
+                                <option value="humedad">Humedad (%)</option>
+                                <option value="co2">CO2 (ppm)</option>
+                                <option value="presion">Presión (hPa)</option>
+                                <!-- Options injected dynamically per device -->
+                            </select>
+                            <span class="text-xs text-gray-400 ml-3">Últimas:</span>
+                            <select id="chart-range-select" onchange="changeChartRange(this.value)" class="bg-darkBg border border-borderBg text-xs text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500">
+                                <option value="5">5 min</option>
+                                <option value="15">15 min</option>
+                                <option value="30" selected>30 min</option>
+                                <option value="60">1 h</option>
+                                <option value="90">1 h y media</option>
+                                <option value="120">2 h</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="h-64 md:h-72 relative">
+                        <canvas id="realtimeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HISTÓRICO TAB CONTENT -->
+            <div id="view-history" class="space-y-6 hidden">
+                <!-- Search & Filter Controls -->
+                <div class="bg-cardBg border border-borderBg p-5 rounded-2xl">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <h3 class="text-base font-semibold text-white">Filtros de Búsqueda Histórica</h3>
+                        <!-- Accesos rápidos de rango -->
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="setHistoryRange('1h')" class="text-[11px] px-3 py-1.5 rounded-full bg-darkBg border border-borderBg text-gray-300 hover:border-blue-500 hover:text-white transition">Última hora</button>
+                            <button onclick="setHistoryRange('24h')" class="text-[11px] px-3 py-1.5 rounded-full bg-darkBg border border-borderBg text-gray-300 hover:border-blue-500 hover:text-white transition">Últimas 24 h</button>
+                            <button onclick="setHistoryRange('7d')" class="text-[11px] px-3 py-1.5 rounded-full bg-darkBg border border-borderBg text-gray-300 hover:border-blue-500 hover:text-white transition">Últimos 7 días</button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1"><i class="fa-solid fa-server mr-1 text-gray-500"></i>Equipo</label>
+                            <select id="hist-filter-device" onchange="setupHistorySensorFilter(); executeHistorySearch();" class="w-full bg-darkBg border border-borderBg text-white text-xs rounded-xl p-2.5 focus:outline-none focus:border-blue-500">
+                                <!-- Dynamic options -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1"><i class="fa-solid fa-microchip mr-1 text-gray-500"></i>Sensor / Tópico</label>
+                            <select id="hist-filter-sensor" class="w-full bg-darkBg border border-borderBg text-white text-xs rounded-xl p-2.5 focus:outline-none focus:border-blue-500">
+                                <option value="todos">Todos los Sensores</option>
+                                <option value="temperatura">Temperatura</option>
+                                <option value="humedad">Humedad</option>
+                                <option value="co2">CO2</option>
+                                <option value="presion">Presión</option>
+                                <!-- Dynamic options per device -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1.5 flex items-center justify-between">
+                                <span><i class="fa-regular fa-calendar-days mr-1 text-blue-400"></i>Desde</span>
+                                <span class="text-[10px] text-gray-500">día / mes / año / hora</span>
+                            </label>
+                            <div class="relative">
+                                <input type="datetime-local" id="hist-filter-from" step="60" class="w-full bg-darkBg border border-borderBg text-white text-xs rounded-xl p-2.5 pr-9 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40 transition">
+                                <i class="fa-regular fa-calendar-days absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none text-xs"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1.5 flex items-center justify-between">
+                                <span><i class="fa-regular fa-calendar-check mr-1 text-emerald-400"></i>Hasta</span>
+                                <button onclick="setHistoryToNow()" title="Poner hora actual" class="text-[10px] text-blue-400 hover:text-blue-300 hover:underline">Ahora</button>
+                            </label>
+                            <div class="relative">
+                                <input type="datetime-local" id="hist-filter-to" step="60" class="w-full bg-darkBg border border-borderBg text-white text-xs rounded-xl p-2.5 pr-9 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40 transition">
+                                <i class="fa-regular fa-clock absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none text-xs"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <button onclick="executeHistorySearch()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-xl transition flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <span>Buscar</span>
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-gray-500 mt-3 flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Tip: usa el icono de calendario del campo para elegir fecha, mes, año y hora. Los botones rápidos ajustan el rango automáticamente.
+                    </p>
+                </div>
+
+                <!-- Historical Chart (en vivo, panorama ampliable) -->
+                <div class="bg-cardBg border border-borderBg p-5 rounded-2xl">
+                    <div class="flex flex-col md:flex-row gap-3 md:justify-between md:items-center mb-4">
+                        <h3 class="text-base font-semibold text-white">Tendencia Histórica</h3>
+                        <span class="text-[11px] text-emerald-400 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span><span id="hist-live-label">En vivo · se amplía con nuevos datos</span></span>
+                    </div>
+                    <div class="h-56 md:h-64 relative">
+                        <canvas id="historyChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Historical Table (pág.1 = más recientes) -->
+                <div class="bg-cardBg border border-borderBg rounded-2xl overflow-hidden">
+                    <div class="p-4 border-b border-borderBg flex flex-col md:flex-row gap-3 md:justify-between md:items-center">
+                        <h3 class="text-base font-semibold text-white">Registros Encontrados <span class="text-[11px] font-normal text-gray-400 ml-2">pág. 1 = más recientes</span></h3>
+                        <button onclick="exportCSV()" class="bg-darkBg hover:bg-borderBg text-gray-300 border border-borderBg px-3 py-1.5 rounded-lg text-xs flex items-center space-x-2">
+                            <i class="fa-solid fa-file-csv text-emerald-400"></i>
+                            <span>Exportar CSV</span>
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-gray-300">
+                            <thead class="bg-darkBg text-gray-400 uppercase tracking-wider border-b border-borderBg">
+                                <tr id="history-table-header">
+                                    <th class="p-3.5">Timestamp</th>
+                                    <th class="p-3.5">Equipo</th>
+                                    <th class="p-3.5">Temperatura</th>
+                                    <th class="p-3.5">Humedad</th>
+                                    <th class="p-3.5">CO2</th>
+                                    <th class="p-3.5">Presión</th>
+                                    <th class="p-3.5">Estado</th>
+                                    <!-- Dynamic sensor columns -->
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body" class="divide-y divide-borderBg">
+                                <!-- Filas inyectadas JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="p-4 border-t border-borderBg flex flex-col md:flex-row gap-3 md:items-center md:justify-between text-xs text-gray-400">
+                        <span id="page-info">Mostrando 0 - 0 de 0</span>
+                        <div class="flex items-center space-x-2">
+                            <span id="page-num" class="text-gray-500">Página 1</span>
+                            <button onclick="changePage(-1)" id="btn-prev-page" class="px-3 py-1 bg-darkBg border border-borderBg rounded text-gray-300 disabled:opacity-50">Anterior</button>
+                            <button onclick="changePage(1)" id="btn-next-page" class="px-3 py-1 bg-darkBg border border-borderBg rounded text-gray-300 disabled:opacity-50">Siguiente</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // --- BASE DE DATOS Y EQUIPOS (8 pestañas: General + 7 equipos) ---
+        const DEVICES = [
+            {
+                id: 'EQ-001',
+                name: 'Calidad de aire_Equipo1', 
+                short: 'Calidad de aire', 
+                icon: 'fa-wind', 
+                online: true, 
+                primaryMetric: 'CO2_PPM',
+                topics: [
+                    { key: 'temperatura', label: 'Temperatura', unit: '°C', min: 0, max: 50, color: '#f97316', icon: 'fa-temperature-high' },
+                    { key: 'humedad', label: 'Humedad', unit: '%', min: 0, max: 100, color: '#3b82f6', icon: 'fa-droplet' },
+                    { key: 'presion', label: 'Presión', unit: 'hPa', min: 950, max: 1050, color: '#10b981', icon: 'fa-gauge-high' },
+                    { key: 'RSSI', label: 'RSSI', unit: 'dBm', min: -100, max: -30, color: '#8b5cf6', icon: 'fa-signal' },
+                    { key: 'CO_raw', label: 'CO Raw', unit: 'raw', min: 0, max: 1023, color: '#eab308', icon: 'fa-wind' },
+                    { key: 'CO2_PPM', label: 'CO2 PPM', unit: 'ppm', min: 300, max: 1500, color: '#ef4444', icon: 'fa-cloud' }
+                ]
+            },
+            { 
+                id: 'EQ-002', 
+                name: 'Luces_Equipo2', 
+                short: 'Luces', 
+                icon: 'fa-lightbulb', 
+                online: true, 
+                primaryMetric: 'lux',
+                topics: [
+                    { key: 'lux', label: 'Luminosidad', unit: 'lux', min: 0, max: 1000, color: '#eab308', icon: 'fa-sun' },
+                    { key: 'estado_luz', label: 'Estado Luz', unit: '', min: 0, max: 1, color: '#10b981', icon: 'fa-lightbulb' },
+                    { key: 'tiempo_encendido', label: 'Tiempo Encendido', unit: 'min', min: 0, max: 1440, color: '#3b82f6', icon: 'fa-clock' },
+                    { key: 'presencia', label: 'Presencia', unit: '', min: 0, max: 1, color: '#8b5cf6', icon: 'fa-user-check' },
+                    { key: 'uso_ineficiente', label: 'Uso Ineficiente', unit: '', min: 0, max: 1, color: '#ef4444', icon: 'fa-triangle-exclamation' },
+                    { key: 'temperatura', label: 'Temperatura', unit: '°C', min: 0, max: 50, color: '#f97316', icon: 'fa-temperature-high' },
+                    { key: 'humedad', label: 'Humedad', unit: '%', min: 0, max: 100, color: '#3b82f6', icon: 'fa-droplet' }
+                ]
+            },
+            { 
+                id: 'EQ-003', 
+                name: 'Siniestro_Equipo3', 
+                short: 'Siniestro', 
+                icon: 'fa-fire', 
+                online: true, 
+                primaryMetric: 'humo_raw',
+                topics: [
+                    { key: 'humo_raw', label: 'Humo Raw', unit: 'raw', min: 0, max: 1023, color: '#6b7280', icon: 'fa-smog' },
+                    { key: 'llama', label: 'Llama', unit: '', min: 0, max: 1, color: '#f97316', icon: 'fa-fire' },
+                    { key: 'temperatura', label: 'Temperatura', unit: '°C', min: 0, max: 100, color: '#ef4444', icon: 'fa-temperature-high' },
+                    { key: 'vibracion', label: 'Vibración', unit: 'g', min: 0, max: 10, color: '#8b5cf6', icon: 'fa-wave-square' },
+                    { key: 'alarma', label: 'Alarma', unit: '', min: 0, max: 1, color: '#ef4444', icon: 'fa-bell' },
+                    { key: 'humedad', label: 'Humedad', unit: '%', min: 0, max: 100, color: '#3b82f6', icon: 'fa-droplet' }
+                ]
+            },
+            { 
+                id: 'EQ-004', 
+                name: 'Presencia y confort_Equipo4', 
+                short: 'Presencia y confort', 
+                icon: 'fa-user-check', 
+                online: true, 
+                primaryMetric: 'indice_confort',
+                topics: [
+                    { key: 'presencia', label: 'Presencia', unit: '', min: 0, max: 1, color: '#8b5cf6', icon: 'fa-user-check' },
+                    { key: 'Co2_PPM', label: 'CO2 PPM', unit: 'ppm', min: 300, max: 1500, color: '#ef4444', icon: 'fa-cloud' },
+                    { key: 'temperatura', label: 'Temperatura', unit: '°C', min: 0, max: 50, color: '#f97316', icon: 'fa-temperature-high' },
+                    { key: 'humedad', label: 'Humedad', unit: '%', min: 0, max: 100, color: '#3b82f6', icon: 'fa-droplet' },
+                    { key: 'ruido_RMS', label: 'Ruido RMS', unit: 'dB', min: 30, max: 100, color: '#10b981', icon: 'fa-volume-high' },
+                    { key: 'indice_confort', label: 'Índice Confort', unit: '%', min: 0, max: 100, color: '#eab308', icon: 'fa-face-smile' }
+                ]
+            },
+            { 
+                id: 'EQ-005', 
+                name: 'Network_Equipo5', 
+                short: 'Network', 
+                icon: 'fa-network-wired', 
+                online: true, 
+                primaryMetric: 'latencia_gateway_ms',
+                topics: [
+                    { key: 'latencia_gateway_ms', label: 'Latencia Gateway', unit: 'ms', min: 0, max: 500, color: '#3b82f6', icon: 'fa-server' },
+                    { key: 'latencia_broker_ms', label: 'Latencia Broker', unit: 'ms', min: 0, max: 500, color: '#8b5cf6', icon: 'fa-server' },
+                    { key: 'perdidas_PCT', label: 'Pérdidas', unit: '%', min: 0, max: 100, color: '#ef4444', icon: 'fa-arrow-trend-down' },
+                    { key: 'RSSI', label: 'RSSI', unit: 'dBm', min: -100, max: -30, color: '#10b981', icon: 'fa-signal' },
+                    { key: 'canal', label: 'Canal', unit: '', min: 1, max: 14, color: '#eab308', icon: 'fa-tower-broadcast' },
+                    { key: 'BSSID', label: 'BSSID', unit: '', min: 0, max: 1, color: '#6b7280', icon: 'fa-wifi' },
+                    { key: 'throughput_kbps', label: 'Throughput', unit: 'kbps', min: 0, max: 10000, color: '#3b82f6', icon: 'fa-gauge-high' },
+                    { key: 'reconexiones', label: 'Reconexiones', unit: '', min: 0, max: 100, color: '#f97316', icon: 'fa-rotate' },
+                    { key: 'presencia', label: 'Presencia', unit: '', min: 0, max: 1, color: '#8b5cf6', icon: 'fa-user-check' },
+                    { key: 'temperatura', label: 'Temperatura', unit: '°C', min: 0, max: 50, color: '#f97316', icon: 'fa-temperature-high' },
+                    { key: 'humedad', label: 'Humedad', unit: '%', min: 0, max: 100, color: '#3b82f6', icon: 'fa-droplet' }
+                ]
+            },
+            { 
+                id: 'EQ-006', 
+                name: 'Exterior_Equipo6', 
+                short: 'Exterior', 
+                icon: 'fa-cloud-sun', 
+                online: true, 
+                primaryMetric: 'temperatura_aire',
+                topics: [
+                    { key: 'humedad_suelo', label: 'Humedad Suelo', unit: '%', min: 0, max: 100, color: '#8b5cf6', icon: 'fa-seedling' },
+                    { key: 'temperatura_suelo', label: 'Temp. Suelo', unit: '°C', min: -10, max: 50, color: '#f97316', icon: 'fa-temperature-high' },
+                    { key: 'lux', label: 'Luminosidad', unit: 'lux', min: 0, max: 100000, color: '#eab308', icon: 'fa-sun' },
+                    { key: 'temperatura_aire', label: 'Temp. Aire', unit: '°C', min: -20, max: 50, color: '#3b82f6', icon: 'fa-temperature-half' },
+                    { key: 'humedad_aire', label: 'Humedad Aire', unit: '%', min: 0, max: 100, color: '#10b981', icon: 'fa-droplet' },
+                    { key: 'presion', label: 'Presión', unit: 'hPa', min: 950, max: 1050, color: '#6b7280', icon: 'fa-gauge-high' },
+                    { key: 'VOC', label: 'VOC', unit: 'ppb', min: 0, max: 1000, color: '#ef4444', icon: 'fa-wind' },
+                    { key: 'lluvia', label: 'Lluvia', unit: '', min: 0, max: 1, color: '#3b82f6', icon: 'fa-cloud-rain' },
+                    { key: 'temperatura', label: 'Temperatura', unit: '°C', min: -20, max: 50, color: '#f97316', icon: 'fa-temperature-high' },
+                    { key: 'humedad', label: 'Humedad', unit: '%', min: 0, max: 100, color: '#3b82f6', icon: 'fa-droplet' }
+                ]
+            },
+            { 
+                id: 'EQ-007', 
+                name: 'Temperatura y humedad_Equipo7', 
+                short: 'Temp. y humedad', 
+                icon: 'fa-temperature-high', 
+                online: true, 
+                primaryMetric: 'temperatura',
+                topics: [
+                    { key: 'temperatura', label: 'Temperatura', unit: '°C', min: 0, max: 50, color: '#f97316', icon: 'fa-temperature-high' },
+                    { key: 'humedad', label: 'Humedad', unit: '%', min: 0, max: 100, color: '#3b82f6', icon: 'fa-droplet' }
+                ]
+            }
+        ];
+
+        let selectedDeviceId = 'GENERAL';
+        let currentTab = 'realtime';
+        let mockActive = true;
+        let sensorsConnected = false; // Si no hay sensores conectados, no se leen datos
+        let activeChartVariable = 'temperatura';
+        let chartRangeMs = 30 * 60 * 1000;
+
+        // Estructura de almacenamiento por equipo (Máximo 30 puntos para tiempo real)
+        const realtimeStore = {};
+        DEVICES.forEach(d => {
+            realtimeStore[d.id] = {
+                labels: [],
+                timestamps: [],
+                temperatura: [],
+                humedad: [],
+                co2: [],
+                presion: [],
+                topics: {}
+            };
+            d.topics.forEach(t => {
+                realtimeStore[d.id].topics[t.key] = [];
+            });
+        });
+
+        // Base de datos histórica simulada (incluye equipos con fallas: estado SIN DATOS)
+        let historyDatabase = [];
+
+        // Instancias de Chart.js
+        let realtimeChartInstance = null;
+        let historyChartInstance = null;
+
+        // Paginación (orden: pág.1 = más recientes)
+        let currentPage = 1;
+        const rowsPerPage = 7;
+        let filteredHistoryData = [];
+
+        // Configuración de rangos y unidades por métrica
+        const METRICS_CONFIG = {
+            temperatura: { label: 'Temperatura', min: 0, max: 50, unit: '°C', color: '#f97316', icon: 'fa-temperature-high' },
+            humedad: { label: 'Humedad', min: 0, max: 100, unit: '%', color: '#3b82f6', icon: 'fa-droplet' },
+            co2: { label: 'Calidad Aire (CO2)', min: 300, max: 1500, unit: 'ppm', color: '#8b5cf6', icon: 'fa-wind' },
+            presion: { label: 'Presión Atmosférica', min: 950, max: 1050, unit: 'hPa', color: '#10b981', icon: 'fa-gauge-high' }
+        };
+
+        // --- INICIALIZACIÓN AL CARGAR LA PÁGINA ---
+        window.onload = function() {
+            renderDeviceList();
+            setupChartSelectOptions();
+            initCharts();
+            generateInitialHistoryData();
+            selectDevice(selectedDeviceId);
+
+            // Motor en tiempo real cada 5.0s
+            setInterval(tickMockEngine, 5000);
+
+            // Rango filtro histórico por defecto: últimas 24h hasta ahora
+            setHistoryRange('24h');
+        };
+
+        // --- MANEJO DE PESTAÑAS ---
+        function switchTab(tabName) {
+            currentTab = tabName;
+            const rtBtn = document.getElementById('tab-realtime-btn');
+            const histBtn = document.getElementById('tab-history-btn');
+            const rtView = document.getElementById('view-realtime');
+            const genView = document.getElementById('view-general');
+            const histView = document.getElementById('view-history');
+
+            if (tabName === 'realtime') {
+                rtBtn.className = "flex-1 md:flex-none px-3 md:px-5 py-1.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 bg-blue-600 text-white shadow-md";
+                histBtn.className = "flex-1 md:flex-none px-3 md:px-5 py-1.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 text-gray-400 hover:text-white";
+                histView.classList.add('hidden');
+                updateMainVisibility();
+            } else {
+                histBtn.className = "flex-1 md:flex-none px-3 md:px-5 py-1.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 bg-blue-600 text-white shadow-md";
+                rtBtn.className = "flex-1 md:flex-none px-3 md:px-5 py-1.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 text-gray-400 hover:text-white";
+                histView.classList.remove('hidden');
+                rtView.classList.add('hidden');
+                genView.classList.add('hidden');
+                executeHistorySearch();
+            }
+        }
+
+        function updateMainVisibility() {
+            const rtView = document.getElementById('view-realtime');
+            const genView = document.getElementById('view-general');
+            const histView = document.getElementById('view-history');
+            if (currentTab !== 'realtime') return;
+            if (selectedDeviceId === 'GENERAL') {
+                genView.classList.remove('hidden');
+                rtView.classList.add('hidden');
+                renderGeneralView();
+            } else {
+                genView.classList.add('hidden');
+                rtView.classList.remove('hidden');
+            }
+        }
+
+        // --- SELECCIÓN Y RENDERIZADO DE EQUIPOS (8 pestañas) ---
+        function renderDeviceList() {
+            const listEl = document.getElementById('device-list');
+            const selectFilter = document.getElementById('hist-filter-device');
+            listEl.innerHTML = '';
+            selectFilter.innerHTML = '<option value="todos">Todos los Equipos</option>';
+
+            // 1) Pestaña GENERAL primero
+            const isGeneralActive = selectedDeviceId === 'GENERAL';
+            const genItem = document.createElement('div');
+            genItem.onclick = () => handleSidebarClick('GENERAL');
+            genItem.className = `p-3 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                isGeneralActive ? 'bg-blue-600/15 border border-blue-500/30 text-white' : 'hover:bg-darkBg/60 text-gray-400'
+            }`;
+            genItem.innerHTML = `
+                <div class="flex items-center space-x-3 truncate">
+                    <i class="fa-solid fa-layer-group ${isGeneralActive ? 'text-blue-400' : 'text-gray-500'}"></i>
+                    <span class="truncate font-semibold text-xs">General</span>
+                </div>
+                <span class="text-[10px] text-gray-500 shrink-0">resumen</span>
+            `;
+            listEl.appendChild(genItem);
+
+            DEVICES.forEach(dev => {
+                // Item Sidebar: si estoy en histórico, al tocar vuelve a realtime
+                const isActive = dev.id === selectedDeviceId;
+                const item = document.createElement('div');
+                item.onclick = () => handleSidebarClick(dev.id);
+                item.className = `p-3 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                    isActive ? 'bg-blue-600/15 border border-blue-500/30 text-white' : 'hover:bg-darkBg/60 text-gray-400'
+                }`;
+                item.innerHTML = `
+                    <div class="flex items-center space-x-3 truncate">
+                        <i class="fa-solid ${dev.icon}" style="color:${isActive ? '#60a5fa' : dev.topics[0].color}"></i>
+                        <span class="truncate font-medium text-xs">${dev.name}</span>
+                    </div>
+                    <span class="w-2 h-2 rounded-full ${dev.online ? 'bg-emerald-500' : 'bg-red-500'} shrink-0"></span>
+                `;
+                listEl.appendChild(item);
+
+                // Option Select Histórico
+                const option = document.createElement('option');
+                option.value = dev.id;
+                option.textContent = dev.name;
+                selectFilter.appendChild(option);
+            });
+        }
+
+        // Click en sidebar: si estoy en histórico -> volver a realtime y mostrar equipo elegido
+        function handleSidebarClick(devId) {
+            if (currentTab === 'history') {
+                switchTabSilentRealtime();
+            }
+            selectDevice(devId);
+            toggleSidebar(false);
+        }
+
+        // Sidebar plegable en celular
+        function toggleSidebar(force) {
+            const sb = document.getElementById('sidebar');
+            const ov = document.getElementById('sidebar-overlay');
+            if (!sb) return;
+            const open = typeof force === 'boolean' ? force : !sb.classList.contains('open');
+            sb.classList.toggle('open', open);
+            if (ov) {
+                ov.classList.toggle('hidden', !open);
+                ov.classList.toggle('show', open);
+            }
+        }
+
+        // Mostrar/ocultar barra lateral en desktop
+        function toggleSidebarDesktop() {
+            const sb = document.getElementById('sidebar');
+            const arrow = document.getElementById('sidebar-arrow');
+            const icon = document.getElementById('sidebar-arrow-icon');
+            if (!sb || !arrow) return;
+            sb.classList.toggle('hidden');
+            const isHidden = sb.classList.contains('hidden');
+            arrow.classList.toggle('md:left-64', !isHidden);
+            arrow.classList.toggle('left-0', isHidden);
+            if (icon) icon.className = isHidden ? 'fa-solid fa-chevron-right text-[10px]' : 'fa-solid fa-chevron-left text-[10px]';
+        }
+
+        function switchTabSilentRealtime() {
+            currentTab = 'realtime';
+            const rtBtn = document.getElementById('tab-realtime-btn');
+            const histBtn = document.getElementById('tab-history-btn');
+            rtBtn.className = "flex-1 md:flex-none px-3 md:px-5 py-1.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 bg-blue-600 text-white shadow-md";
+            histBtn.className = "flex-1 md:flex-none px-3 md:px-5 py-1.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 text-gray-400 hover:text-white";
+            document.getElementById('view-history').classList.add('hidden');
+        }
+
+        function selectDevice(devId) {
+            selectedDeviceId = devId;
+            renderDeviceList();
+
+            if (devId === 'GENERAL') {
+                updateMainVisibility();
+                return;
+            }
+
+            const device = DEVICES.find(d => d.id === devId);
+            if (!device) return;
+
+            document.getElementById('current-device-name').textContent = device.name;
+            document.getElementById('current-device-id').textContent = `ID: ${device.id}`;
+            document.getElementById('current-device-icon').className = `fa-solid ${device.icon}`;
+
+            const badge = document.getElementById('current-device-badge');
+            if (device.online) {
+                badge.className = "px-2 py-0.5 text-xs rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                badge.textContent = "ONLINE";
+            } else {
+                badge.className = "px-2 py-0.5 text-xs rounded-full bg-red-500/10 text-red-400 border border-red-500/20";
+                badge.textContent = "OFFLINE";
+            }
+
+            // Setup chart select with device topics
+            setupChartSelectOptions();
+            // Setup history filter with device topics
+            setupHistorySensorFilter();
+
+            updateMainVisibility();
+            updateCardsUI();
+            updateRealtimeChart();
+        }
+
+        // --- VISTA GENERAL: mini resumen última actualización (estética anillos) ---
+        // Color gradual según el estado: verde (ok) -> amarillo -> rojo (problema)
+        function stateColor(pct) {
+            let severity = 0;
+            if (pct > 0.65) severity = Math.min((pct - 0.65) / 0.35, 1);
+            else if (pct < 0.15) severity = Math.min((0.15 - pct) / 0.15, 1);
+            const green = [16, 185, 129], yellow = [234, 179, 8], red = [239, 68, 68];
+            let c;
+            if (severity <= 0.5) {
+                const t = severity * 2;
+                c = green.map((g, i) => Math.round(g + (yellow[i] - g) * t));
+            } else {
+                const t = (severity - 0.5) * 2;
+                c = yellow.map((y, i) => Math.round(y + (red[i] - y) * t));
+            }
+            return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+        }
+
+        function getStatusInfo(pct) {
+            if (pct > 0.85) return { label: 'Crítico', cls: 'text-red-400 bg-red-500/10 border-red-500/20' };
+            if (pct < 0.15) return { label: 'Precaución', cls: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' };
+            if (pct > 0.65) return { label: 'En revisión', cls: 'text-orange-400 bg-orange-500/10 border-orange-500/20' };
+            return { label: 'Óptimo', cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
+        }
+
+        function renderGeneralView() {
+            const grid = document.getElementById('general-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            let latestTime = '--:--:--';
+            let activeCount = 0;
+
+            DEVICES.forEach(dev => {
+                const store = realtimeStore[dev.id];
+                const lastIdx = store.labels.length - 1;
+                const metricKey = dev.primaryMetric || dev.topics[0].key;
+                const topicCfg = dev.topics.find(t => t.key === metricKey) || dev.topics[0];
+                const hasData = lastIdx >= 0 && dev.online;
+                const rawVal = hasData ? store.topics[metricKey][lastIdx] : 0;
+                const val = typeof rawVal === 'number' ? rawVal : 0;
+                const timeStr = hasData ? store.labels[lastIdx] : 'sin datos';
+                if (hasData) { latestTime = timeStr; activeCount++; }
+
+                const pct = hasData ? Math.min(Math.max((val - topicCfg.min) / (topicCfg.max - topicCfg.min), 0), 1) : 0;
+                const radius = 38;
+                const circumference = 2 * Math.PI * radius;
+                const offset = circumference - (pct * circumference);
+                const status = hasData ? getStatusInfo(pct) : { label: 'Sin datos', cls: 'text-gray-400 bg-gray-500/10 border-gray-500/20' };
+
+                const card = document.createElement('div');
+                card.onclick = () => selectDevice(dev.id);
+                card.className = "bg-darkBg/60 border border-borderBg p-3 rounded-2xl flex flex-col items-center text-center space-y-2 cursor-pointer hover:border-blue-500/40 transition";
+                card.innerHTML = `
+                    <span class="text-[11px] font-semibold text-gray-300 leading-tight">${dev.short}<br><span class="text-[10px] font-normal text-gray-500">${dev.id}</span></span>
+                    <div class="relative w-[96px] h-[96px] flex items-center justify-center shrink-0">
+                        <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="${radius}" stroke="#262a36" stroke-width="9" fill="transparent" />
+                            <circle cx="50" cy="50" r="${radius}" stroke="${hasData ? stateColor(pct) : '#6b7280'}" stroke-width="9" fill="transparent"
+                                stroke-dasharray="${circumference}"
+                                stroke-dashoffset="${offset}"
+                                stroke-linecap="round"
+                                class="circle-chart-circle" />
+                        </svg>
+                        <div class="absolute flex flex-col items-center leading-none">
+                            <span class="text-sm font-bold text-white">${val.toFixed(1)}</span>
+                            <span class="text-[9px] text-gray-400">${topicCfg.unit}</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <p class="text-[10px] text-gray-400">${topicCfg.label}</p>
+                        <span class="inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full border ${status.cls}">${status.label}</span>
+                        <p class="text-[10px] text-gray-500 font-mono">${timeStr}</p>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+
+            document.getElementById('general-last-update').textContent = `Última actualización: ${latestTime}`;
+            document.getElementById('general-count').textContent = `${activeCount} / ${DEVICES.length} activos`;
+            const badge = document.getElementById('general-online-badge');
+            if (activeCount === DEVICES.length) {
+                badge.textContent = 'EN LÍNEA';
+                badge.className = "px-2 py-0.5 text-xs rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+            } else if (activeCount === 0) {
+                badge.textContent = 'SIN DATOS';
+                badge.className = "px-2 py-0.5 text-xs rounded-full bg-red-500/10 text-red-400 border border-red-500/20";
+            } else {
+                badge.textContent = 'PARCIAL';
+                badge.className = "px-2 py-0.5 text-xs rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20";
+            }
+        }
+
+        // --- COMPONENTE DE TARJETAS CIRCULARES SVG ---
+        function updateCardsUI() {
+            const container = document.getElementById('cards-container');
+            if (!container || selectedDeviceId === 'GENERAL') return;
+            container.innerHTML = '';
+
+            const device = DEVICES.find(d => d.id === selectedDeviceId);
+            if (!device) return;
+
+            const store = realtimeStore[selectedDeviceId];
+            if (!store) return;
+            const lastIndex = store.labels.length - 1;
+
+            device.topics.forEach(topic => {
+                const rawVal = lastIndex >= 0 ? store.topics[topic.key][lastIndex] : 0;
+                const val = typeof rawVal === 'number' ? rawVal : 0;
+
+                // Calcular porcentaje para el anillo SVG
+                const pct = Math.min(Math.max((val - topic.min) / (topic.max - topic.min), 0), 1);
+                const radius = 41;
+                const circumference = 2 * Math.PI * radius;
+                const strokeDashoffset = circumference - (pct * circumference);
+
+                // Estado profesional: Óptimo / En revisión / Precaución / Crítico
+                const status = lastIndex < 0 ? { label: 'Sin datos', cls: 'text-gray-400 bg-gray-500/10 border-gray-500/20' } : getStatusInfo(pct);
+
+                const card = document.createElement('div');
+                card.className = "bg-cardBg border border-borderBg p-4 rounded-2xl flex items-center justify-between shadow-sm hover:border-gray-700 transition";
+                card.innerHTML = `
+                    <div class="space-y-2">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid ${topic.icon} text-gray-400 text-xs"></i>
+                            <span class="text-xs text-gray-400 font-medium">${topic.label}</span>
+                        </div>
+                        <div>
+                            <span class="text-2xl font-bold text-white tracking-tight">${val.toFixed(1)}</span>
+                            <span class="text-xs text-gray-400 ml-0.5">${topic.unit}</span>
+                        </div>
+                        <div>
+                            <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full border ${status.cls}">
+                                ${status.label}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Anillo Circular SVG -->
+                    <div class="relative w-24 h-24 flex items-center justify-center shrink-0">
+                        <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="${radius}" stroke="#262a36" stroke-width="8" fill="transparent" />
+                            <circle cx="50" cy="50" r="${radius}" stroke="${stateColor(pct)}" stroke-width="8" fill="transparent"
+                                stroke-dasharray="${circumference}"
+                                stroke-dashoffset="${strokeDashoffset}"
+                                stroke-linecap="round"
+                                class="circle-chart-circle" />
+                        </svg>
+                        <span class="absolute text-xs font-semibold text-gray-300">${Math.round(pct * 100)}%</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // --- MOTOR DE GRÁFICOS (CHART.JS) ---
+        function initCharts() {
+            // Chart Realtime
+            const ctxRt = document.getElementById('realtimeChart').getContext('2d');
+
+            // Gradiente dinámico
+            const gradient = ctxRt.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+
+            realtimeChartInstance = new Chart(ctxRt, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Medición',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        borderWidth: 2,
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { color: '#262a36' },
+                            ticks: { color: '#9ca3af', font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }
+                        },
+                        y: {
+                            grid: { color: '#262a36' },
+                            ticks: { color: '#9ca3af', font: { size: 10 } }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+
+            // Chart Histórico (panorama ampliable, eje X con fecha+hora real)
+            const ctxHist = document.getElementById('historyChart').getContext('2d');
+            historyChartInstance = new Chart(ctxHist, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Promedio Histórico',
+                        data: [],
+                        borderColor: '#10b981',
+                        borderWidth: 2,
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 400 },
+                    scales: {
+                        x: { grid: { color: '#262a36' }, ticks: { color: '#9ca3af', font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 } },
+                        y: { grid: { color: '#262a36' }, ticks: { color: '#9ca3af', font: { size: 10 } } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function updateRealtimeChart() {
+            if (!realtimeChartInstance || selectedDeviceId === 'GENERAL') return;
+
+            const device = DEVICES.find(d => d.id === selectedDeviceId);
+            if (!device) return;
+
+            const store = realtimeStore[selectedDeviceId];
+            if (!store) return;
+            // Usar configuración del tópico activo del equipo
+            const topic = device.topics.find(t => t.key === activeChartVariable) || device.topics[0];
+            const cfg = topic;
+
+            // Recrear gradiente con color actual de la métrica
+            const ctx = realtimeChartInstance.ctx;
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, cfg.color + '66'); // 40% opacidad
+            gradient.addColorStop(1, cfg.color + '00');
+
+            // Filtrar puntos según el rango de tiempo seleccionado
+            const nowMs = Date.now();
+            const stamps = store.timestamps || [];
+            const idxs = [];
+            for (let i = 0; i < store.labels.length; i++) {
+                if (!stamps[i] || (nowMs - stamps[i]) <= chartRangeMs) idxs.push(i);
+            }
+            const filteredLabels = idxs.map(i => store.labels[i]);
+            const filteredData = idxs.map(i => store.topics[cfg.key][i]);
+
+            realtimeChartInstance.data.labels = filteredLabels;
+            realtimeChartInstance.data.datasets[0].data = filteredData;
+            realtimeChartInstance.data.datasets[0].label = cfg.label;
+            realtimeChartInstance.data.datasets[0].borderColor = cfg.color;
+            realtimeChartInstance.data.datasets[0].pointBackgroundColor = cfg.color;
+            realtimeChartInstance.data.datasets[0].backgroundColor = gradient;
+
+            realtimeChartInstance.update('none'); // Update suave sin resetear animaciones complejas
+
+            document.getElementById('point-count').textContent = `${filteredLabels.length} / ${store.labels.length}`;
+            if (filteredLabels.length > 0) {
+                document.getElementById('last-update').textContent = filteredLabels[filteredLabels.length - 1];
+            }
+        }
+
+        function changeChartVariable(val) {
+            activeChartVariable = val;
+            updateRealtimeChart();
+        }
+
+        function changeChartRange(val) {
+            chartRangeMs = parseInt(val, 10) * 60 * 1000;
+            updateRealtimeChart();
+        }
+
+        // --- MOTOR TIEMPO REAL CADA 5.0s (ventana máx 30) + histórico con fallas ---
+        function tickMockEngine() {
+            if (!mockActive) return;
+            if (!sensorsConnected) return; // Sin sensores conectados: no se leen datos
+
+            const now = new Date();
+            const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            DEVICES.forEach(dev => {
+                const store = realtimeStore[dev.id];
+
+                // Si el equipo está caído: NO actualiza realtime, SÍ deja rastro en histórico
+                if (!dev.online) {
+                    const failRecord = {
+                        timestamp: now.toISOString(),
+                        deviceId: dev.id,
+                        deviceName: dev.name,
+                        temperatura: null,
+                        humedad: null,
+                        co2: null,
+                        presion: null,
+                        estado: 'SIN DATOS'
+                    };
+                    dev.topics.forEach(t => { failRecord[t.key] = null; });
+                    historyDatabase.unshift(failRecord);
+                    return;
+                }
+
+                // Generar valores fluctuantes realistas
+                const prevTemp = store.temperatura.length > 0 ? store.temperatura[store.temperatura.length - 1] : 24.0;
+                const prevHum = store.humedad.length > 0 ? store.humedad[store.humedad.length - 1] : 50.0;
+                const prevCo2 = store.co2.length > 0 ? store.co2[store.co2.length - 1] : 600;
+                const prevPres = store.presion.length > 0 ? store.presion[store.presion.length - 1] : 1013;
+
+                const newTemp = Math.min(Math.max(prevTemp + (Math.random() - 0.48), 15), 38);
+                const newHum = Math.min(Math.max(prevHum + (Math.random() - 0.5) * 2, 20), 85);
+                const newCo2 = Math.min(Math.max(prevCo2 + (Math.random() - 0.49) * 15, 350), 1200);
+                const newPres = Math.min(Math.max(prevPres + (Math.random() - 0.5) * 1.5, 980), 1040);
+                // Generar valores fluctuantes realistas por topic
+                const newValues = {};
+                dev.topics.forEach(topic => {
+                    const prevVal = store.topics[topic.key].length > 0 
+                        ? store.topics[topic.key][store.topics[topic.key].length - 1] 
+                        : (topic.min + topic.max) / 2;
+                    
+                    let newVal;
+                    if (topic.max - topic.min <= 1) {
+                        // Boolean-like topic (0 or 1)
+                        newVal = Math.random() > 0.5 ? topic.max : topic.min;
+                    } else {
+                        const range = topic.max - topic.min;
+                        const delta = (Math.random() - 0.5) * range * 0.1;
+                        newVal = Math.min(Math.max(prevVal + delta, topic.min), topic.max);
+                    }
+                    newValues[topic.key] = newVal;
+                });
+
+                // Insertar datos con hora real de la medición
+                store.labels.push(timeLabel);
+                store.timestamps.push(now.getTime());
+                store.temperatura.push(newTemp);
+                store.humedad.push(newHum);
+                store.co2.push(newCo2);
+                store.presion.push(newPres);
+                dev.topics.forEach(topic => {
+                    store.topics[topic.key].push(newValues[topic.key]);
+                });
+
+                // Máximo 1500 puntos (ventana deslizante interna, cubre hasta 2h)
+                if (store.labels.length > 1500) {
+                    store.labels.shift();
+                    store.timestamps.shift();
+                    store.temperatura.shift();
+                    store.humedad.shift();
+                    store.co2.shift();
+                    store.presion.shift();
+                    dev.topics.forEach(topic => {
+                        store.topics[topic.key].shift();
+                    });
+                }
+
+                // Guardar también en histórico general (nuevos primero)
+                const record = {
+                    timestamp: now.toISOString(),
+                    deviceId: dev.id,
+                    deviceName: dev.name,
+                    temperatura: newTemp,
+                    humedad: newHum,
+                    co2: newCo2,
+                    presion: newPres,
+                    estado: 'OK'
+                };
+                dev.topics.forEach(topic => {
+                    record[topic.key] = newValues[topic.key];
+                });
+                historyDatabase.unshift(record);
+            });
+
+            // Actualizar vista activa
+            if (currentTab === 'realtime') {
+                if (selectedDeviceId === 'GENERAL') {
+                    renderGeneralView();
+                } else {
+                    updateCardsUI();
+                    updateRealtimeChart();
+                }
+            } else if (currentTab === 'history') {
+                // Tendencia histórica en vivo: amplía panorama sin perder la página
+                executeHistorySearch(true);
+            }
+        }
+
+        function toggleMockEngine() {
+            mockActive = !mockActive;
+            const btn = document.getElementById('mock-toggle-btn');
+            const ping = document.getElementById('pb-status-ping');
+            const dot = document.getElementById('pb-status-dot');
+            const text = document.getElementById('pb-status-text');
+
+            if (mockActive) {
+                btn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+                ping.className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75";
+                dot.className = "relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500";
+                text.textContent = "Online";
+            } else {
+                btn.innerHTML = '<i class="fa-solid fa-play"></i>';
+                ping.className = "hidden";
+                dot.className = "relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-500";
+                text.textContent = "Pausado";
+            }
+        }
+
+        // --- FUNCIONES HISTÓRICAS Y TABLA ---
+        function generateInitialHistoryData() {
+            // Sin sensores conectados: no se genera historial inventado
+            historyDatabase = [];
+            return;
+            const now = Date.now();
+            for (let i = 0; i < 150; i++) {
+                const dev = DEVICES[i % DEVICES.length];
+                const falla = (i % 37 === 0); // falla simulada ocasional
+                const record = {
+                    timestamp: new Date(now - i * 5 * 60 * 1000).toISOString(),
+                    deviceId: dev.id,
+                    deviceName: dev.name,
+                    temperatura: falla ? null : 20 + Math.random() * 10,
+                    humedad: falla ? null : 40 + Math.random() * 30,
+                    co2: falla ? null : 400 + Math.random() * 400,
+                    presion: falla ? null : 1000 + Math.random() * 20,
+                    estado: falla ? 'SIN DATOS' : 'OK'
+                };
+                dev.topics.forEach(topic => {
+                    if (falla) {
+                        record[topic.key] = null;
+                    } else {
+                        if (topic.max - topic.min <= 1) {
+                            record[topic.key] = Math.random() > 0.5 ? topic.max : topic.min;
+                        } else {
+                            record[topic.key] = topic.min + Math.random() * (topic.max - topic.min);
+                        }
+                    }
+                });
+                historyDatabase.push(record);
+            }
+            // Orden base: más recientes primero
+            historyDatabase.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        }
+
+        function setupHistorySensorFilter() {
+            const sel = document.getElementById('hist-filter-sensor');
+            if (!sel) return;
+            
+            // Get selected device or use first device as default
+            const devId = selectedDeviceId !== 'GENERAL' ? selectedDeviceId : DEVICES[0].id;
+            const device = DEVICES.find(d => d.id === devId) || DEVICES[0];
+            
+            sel.innerHTML = '<option value="todos">Todos los Sensores</option>';
+            device.topics.forEach(topic => {
+                const opt = document.createElement('option');
+                opt.value = topic.key;
+                opt.textContent = `${topic.label} (${topic.key})`;
+                sel.appendChild(opt);
+            });
+        }
+
+        function executeHistorySearch(preservePage = false) {
+            const devFilter = document.getElementById('hist-filter-device').value;
+            const sensorFilter = document.getElementById('hist-filter-sensor').value;
+            const fromVal = document.getElementById('hist-filter-from').value;
+            const toVal = document.getElementById('hist-filter-to').value;
+
+            const fromDate = fromVal ? new Date(fromVal) : new Date(0);
+            const toDate = toVal ? new Date(toVal) : new Date();
+
+            filteredHistoryData = historyDatabase.filter(item => {
+                const itemDate = new Date(item.timestamp);
+                const matchDev = (devFilter === 'todos' || item.deviceId === devFilter);
+                const matchDate = (itemDate >= fromDate && itemDate <= toDate);
+                return matchDev && matchDate;
+            });
+
+            // Pág.1 = más recientes, última pág. = más antiguos
+            filteredHistoryData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            if (!preservePage) currentPage = 1;
+            const maxPage = Math.max(Math.ceil(filteredHistoryData.length / rowsPerPage), 1);
+            if (currentPage > maxPage) currentPage = maxPage;
+            renderHistoryTable();
+            renderHistoryChart(sensorFilter, devFilter);
+        }
+
+        function renderHistoryTable() {
+            const tbody = document.getElementById('history-table-body');
+            const thead = document.getElementById('history-table-header');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            // Determine which device's topics to show as columns
+            const devId = selectedDeviceId !== 'GENERAL' ? selectedDeviceId : DEVICES[0].id;
+            const device = DEVICES.find(d => d.id === devId) || DEVICES[0];
+            
+            // Update header with device topics
+            if (thead) {
+                thead.innerHTML = `
+                    <th class="p-3.5">Timestamp</th>
+                    <th class="p-3.5">Equipo</th>
+                `;
+                device.topics.forEach(topic => {
+                    const th = document.createElement('th');
+                    th.className = 'p-3.5';
+                    th.textContent = topic.label;
+                    thead.appendChild(th);
+                });
+                const thEstado = document.createElement('th');
+                thEstado.className = 'p-3.5';
+                thEstado.textContent = 'Estado';
+                thead.appendChild(thEstado);
+            }
+
+            const start = (currentPage - 1) * rowsPerPage;
+            const end = start + rowsPerPage;
+            const pageItems = filteredHistoryData.slice(start, end);
+
+            if (pageItems.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${device.topics.length + 3}" class="p-4 text-center text-gray-500">No se encontraron registros en el rango seleccionado (incluye equipos sin datos si existen fallas)</td></tr>`;
+            } else {
+                pageItems.forEach(row => {
+                    const isFail = row.estado !== 'OK';
+                    const fmt = (v, digits=1) => (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toFixed(digits);
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-darkBg/50 transition";
+                    let cells = `
+                        <td class="p-3.5 text-gray-300 font-mono">${formatDate(row.timestamp)}</td>
+                        <td class="p-3.5 font-medium text-white">${row.deviceName}</td>
+                    `;
+                    
+                    device.topics.forEach(topic => {
+                        const val = row[topic.key];
+                        const displayVal = (val === null || val === undefined || isNaN(val)) ? '—' : (topic.max - topic.min <= 1 ? (val ? 'ON' : 'OFF') : Number(val).toFixed(1) + ' ' + topic.unit);
+                        cells += `<td class="p-3.5">${isFail ? '—' : displayVal}</td>`;
+                    });
+                    
+                    cells += `
+                        <td class="p-3.5">${isFail
+                            ? '<span class="px-2 py-0.5 text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 rounded-full">SIN DATOS</span>'
+                            : '<span class="px-2 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">OK</span>'}</td>
+                    `;
+                    
+                    tr.innerHTML = cells;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // Paginación UI
+            const total = filteredHistoryData.length;
+            const maxPage = Math.ceil(total / rowsPerPage) || 1;
+            document.getElementById('page-info').textContent = `Mostrando ${total > 0 ? start + 1 : 0} - ${Math.min(end, total)} de ${total}`;
+            document.getElementById('page-num').textContent = `Página ${currentPage} de ${maxPage}`;
+            document.getElementById('btn-prev-page').disabled = currentPage === 1;
+            document.getElementById('btn-next-page').disabled = currentPage >= maxPage;
+        }
+
+        function changePage(delta) {
+            currentPage += delta;
+            const maxPage = Math.ceil(filteredHistoryData.length / rowsPerPage) || 1;
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > maxPage) currentPage = maxPage;
+            renderHistoryTable();
+        }
+
+        function renderHistoryChart(sensorKey, devFilter) {
+            if (!historyChartInstance) return;
+
+            // Determine which device to use for topic config
+            const devId = (devFilter && devFilter !== 'todos') ? devFilter : (selectedDeviceId !== 'GENERAL' ? selectedDeviceId : DEVICES[0].id);
+            const device = DEVICES.find(d => d.id === devId) || DEVICES[0];
+
+            // Panorama ampliable: últimos 120 puntos ordenados viejo->nuevo, con hora real (fecha+hora+seg)
+            const sortedAsc = [...filteredHistoryData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            const samples = sortedAsc.slice(-120);
+            const labels = samples.map(s => {
+                const d = new Date(s.timestamp);
+                return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            });
+            
+
+            let data = [];
+            let color = '#10b981';
+
+            const valOrNull = (v) => (v === null || v === undefined) ? null : v;
+
+            if (sensorKey === 'todos') {
+                // Use first topic if "todos"
+                const firstTopic = device.topics[0];
+                data = samples.map(s => valOrNull(s[firstTopic.key]));
+                color = firstTopic.color;
+            } else {
+                const topic = device.topics.find(t => t.key === sensorKey);
+                if (topic) {
+                    data = samples.map(s => valOrNull(s[sensorKey]));
+                    color = topic.color;
+                } else {
+                    // Fallback to first topic if sensorKey not found in this device
+                    const firstTopic = device.topics[0];
+                    data = samples.map(s => valOrNull(s[firstTopic.key]));
+                    color = firstTopic.color;
+                }
+            }
+
+            historyChartInstance.data.labels = labels;
+            historyChartInstance.data.datasets[0].data = data;
+            historyChartInstance.data.datasets[0].borderColor = color;
+            historyChartInstance.data.datasets[0].backgroundColor = color + '22';
+            historyChartInstance.options.scales.x.ticks.maxTicksLimit = samples.length > 60 ? 12 : 10;
+            historyChartInstance.update();
+            // Save label before destroying
+            const prevLabel = historyChartInstance.data.datasets[0].label;
+            // Destroy and recreate chart to ensure clean render
+            historyChartInstance.destroy();
+            const ctxHist = document.getElementById('historyChart').getContext('2d');
+            historyChartInstance = new Chart(ctxHist, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: prevLabel || 'Tendencia',
+                        data: data,
+                        borderColor: color,
+                        borderWidth: 2,
+                        backgroundColor: color + '22',
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 0,
+                        spanGaps: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 400 },
+                    scales: {
+                        x: { grid: { color: '#262a36' }, ticks: { color: '#9ca3af', font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: samples.length > 60 ? 12 : 10 } },
+                        y: { grid: { color: '#262a36' }, ticks: { color: '#9ca3af', font: { size: 10 } } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+            const liveLabel = document.getElementById('hist-live-label');
+            if (liveLabel) liveLabel.textContent = samples.length > 0
+                ? `En vivo · ${samples.length} puntos · últ. ${labels[labels.length - 1]}`
+                : 'En vivo · se amplía con nuevos datos';
+        }
+
+        // --- RANGOS RÁPIDOS + UTILIDADES FECHA ---
+        function setHistoryRange(range) {
+            const now = new Date();
+            let from = new Date(now);
+            if (range === '1h') from = new Date(now.getTime() - 1 * 60 * 60 * 1000);
+            if (range === '24h') from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            if (range === '7d') from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            document.getElementById('hist-filter-from').value = formatDateForInput(from);
+            document.getElementById('hist-filter-to').value = formatDateForInput(now);
+            executeHistorySearch();
+        }
+
+        function setHistoryToNow() {
+            document.getElementById('hist-filter-to').value = formatDateForInput(new Date());
+        }
+
+        function formatDate(isoStr) {
+            const d = new Date(isoStr);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        }
+
+        function formatDateForInput(date) {
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        }
+
+        function setupChartSelectOptions() {
+            const sel = document.getElementById('chart-variable-select');
+            if (!sel) return;
+            
+            // Get selected device or use first device as default
+            const devId = selectedDeviceId !== 'GENERAL' ? selectedDeviceId : DEVICES[0].id;
+            const device = DEVICES.find(d => d.id === devId) || DEVICES[0];
+            
+            sel.innerHTML = '';
+            device.topics.forEach(topic => {
+                const opt = document.createElement('option');
+                opt.value = topic.key;
+                opt.textContent = `${topic.label} (${topic.unit})`;
+                sel.appendChild(opt);
+            });
+            
+            // Set active chart variable to first topic if current is invalid
+            if (!device.topics.find(t => t.key === activeChartVariable)) {
+                activeChartVariable = device.topics[0].key;
+            }
+            sel.value = activeChartVariable;
+        }
+
+        function exportCSV() {
+            if (filteredHistoryData.length === 0) {
+                alert("No hay datos para exportar.");
+                return;
+            }
+
+            // Headers según los tópicos del equipo seleccionado
+            const devId = selectedDeviceId !== 'GENERAL' ? selectedDeviceId : DEVICES[0].id;
+            const device = DEVICES.find(d => d.id === devId) || DEVICES[0];
+
+            let csvContent = "data:text/csv;charset=utf-8,Timestamp,Equipo";
+            device.topics.forEach(topic => {
+                csvContent += `,${topic.label}`;
+            });
+            csvContent += ",Estado\n";
+            
+            filteredHistoryData.forEach(row => {
+                const f = (v) => (v === null || v === undefined) ? '' : Number(v).toFixed(2);
+                csvContent += `"${row.timestamp}","${row.deviceName}"`;
+                device.topics.forEach(topic => {
+                    csvContent += `,${f(row[topic.key])}`;
+                });
+                csvContent += `,${row.estado || 'OK'}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `reporte_iot_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
+
+líneas 1-1482
